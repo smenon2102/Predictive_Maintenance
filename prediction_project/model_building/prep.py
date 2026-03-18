@@ -1,4 +1,3 @@
-%%writefile prediction_project/model_building/prep.py
 from huggingface_hub import HfApi
 from sklearn.model_selection import train_test_split
 import pandas as pd

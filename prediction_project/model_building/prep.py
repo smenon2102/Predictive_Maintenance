@@ -1,6 +1,6 @@
-from datasets import load_dataset
-from sklearn.model_selection import train_test_split
+%%writefile prediction_project/model_building/prep.py
 from huggingface_hub import HfApi
+from sklearn.model_selection import train_test_split
 import pandas as pd
 import os
 
@@ -10,12 +10,14 @@ token = os.getenv("PREDICTIVE_GIT_TOKEN")
 if token is None:
     raise ValueError("PREDICTIVE_GIT_TOKEN environment variable not set")
 
-# Load dataset from Hugging Face
-dataset = load_dataset(repo_id)
-df = dataset["train"].to_pandas()
+api = HfApi(token=token)
+
+# Load dataset directly from Hugging Face using pandas
+data_path = f"hf://datasets/{repo_id}/engine_data.csv"
+df = pd.read_csv(data_path)
 
 print("Dataset loaded successfully from Hugging Face.")
-print("Shape:", df.shape)
+print("Original shape:", df.shape)
 
 # Standardize column names
 df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
@@ -27,7 +29,7 @@ df = df.dropna()
 print("Data cleaning completed.")
 print("Shape after cleaning:", df.shape)
 
-# Train-test split
+# Split into train and test
 train_df, test_df = train_test_split(
     df,
     test_size=0.2,
@@ -36,17 +38,12 @@ train_df, test_df = train_test_split(
 )
 
 # Save locally
-train_path = "prediction_project/data/train.csv"
-test_path = "prediction_project/data/test.csv"
-
-train_df.to_csv(train_path, index=False)
-test_df.to_csv(test_path, index=False)
+train_df.to_csv("prediction_project/data/train.csv", index=False)
+test_df.to_csv("prediction_project/data/test.csv", index=False)
 
 print("Train and test datasets saved locally.")
 
-# Upload processed files back to Hugging Face
-api = HfApi(token=token)
-
+# Upload updated data folder back to Hugging Face
 api.upload_folder(
     folder_path="prediction_project/data",
     repo_id=repo_id,

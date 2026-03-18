@@ -1,24 +1,31 @@
-from datasets import load_dataset
+import os
+import pandas as pd
+import joblib
+
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 from huggingface_hub import HfApi
 from huggingface_hub.utils import RepositoryNotFoundError, HfHubHTTPError
-import pandas as pd
-import joblib
-import os
 
-data_repo_id = "avatar2102/engine-predictive-maintenance"
-model_repo_id = "avatar2102/engine-predictive-maintenance-model"
+DATASET_REPO_ID = "avatar2102/engine-predictive-maintenance"
+MODEL_REPO_ID = "avatar2102/engine-predictive-maintenance-model"
+
 token = os.getenv("PREDICTIVE_GIT_TOKEN")
-
 if token is None:
     raise ValueError("PREDICTIVE_GIT_TOKEN environment variable not set")
 
-# Load train and test datasets from Hugging Face
-train_df = load_dataset(data_repo_id, data_files="train.csv")["train"].to_pandas()
-test_df = load_dataset(data_repo_id, data_files="test.csv")["train"].to_pandas()
+api = HfApi(token=token)
+
+# Load train/test data from Hugging Face dataset repo
+train_path = f"hf://datasets/{DATASET_REPO_ID}/train.csv"
+test_path = f"hf://datasets/{DATASET_REPO_ID}/test.csv"
+
+train_df = pd.read_csv(train_path)
+test_df = pd.read_csv(test_path)
 
 print("Train and test datasets loaded successfully from Hugging Face.")
+print("Train shape:", train_df.shape)
+print("Test shape:", test_df.shape)
 
 # Split features and target
 X_train = train_df.drop("engine_condition", axis=1)
@@ -29,7 +36,7 @@ y_test = test_df["engine_condition"]
 
 print("Feature-target split completed.")
 
-# Final AdaBoost model using already tuned best parameters
+# Final AdaBoost model using tuned parameters from interim phase
 final_model = AdaBoostClassifier(
     n_estimators=150,
     learning_rate=0.05,
@@ -43,14 +50,14 @@ print("Final AdaBoost model trained successfully.")
 # Predict on test data
 y_pred = final_model.predict(X_test)
 
-# Evaluation metrics
+# Evaluate model
 accuracy = accuracy_score(y_test, y_pred)
 precision = precision_score(y_test, y_pred)
 recall = recall_score(y_test, y_pred)
 f1 = f1_score(y_test, y_pred)
 cm = confusion_matrix(y_test, y_pred)
 
-print("Model Evaluation Completed.")
+print("Model evaluation completed.")
 print("Accuracy:", accuracy)
 print("Precision:", precision)
 print("Recall:", recall)
@@ -78,21 +85,19 @@ print("Experiment log saved successfully.")
 joblib.dump(final_model, "prediction_project/model_building/adaboost_final_model.joblib")
 print("Model saved locally as joblib.")
 
-# Create model repo if needed
-api = HfApi(token=token)
-
+# Create model repo if missing
 try:
-    api.repo_info(repo_id=model_repo_id, repo_type="model")
-    print(f"Model repo '{model_repo_id}' already exists. Using it.")
+    api.repo_info(repo_id=MODEL_REPO_ID, repo_type="model")
+    print(f"Model repo '{MODEL_REPO_ID}' already exists. Using it.")
 except (RepositoryNotFoundError, HfHubHTTPError):
-    print(f"Model repo '{model_repo_id}' not found. Creating new repo...")
-    api.create_repo(repo_id=model_repo_id, repo_type="model", exist_ok=True)
-    print(f"Model repo '{model_repo_id}' created.")
+    print(f"Model repo '{MODEL_REPO_ID}' not found. Creating new repo...")
+    api.create_repo(repo_id=MODEL_REPO_ID, repo_type="model", exist_ok=True)
+    print(f"Model repo '{MODEL_REPO_ID}' created.")
 
-# Upload model_building folder to Hugging Face Model Hub
+# Upload model_building folder to HF Model Hub
 api.upload_folder(
     folder_path="prediction_project/model_building",
-    repo_id=model_repo_id,
+    repo_id=MODEL_REPO_ID,
     repo_type="model",
     commit_message="Upload final AdaBoost model and experiment log"
 )
